@@ -13,7 +13,7 @@ int distanciaCm;
 
 //Variaveis-verificarVazamentodeGas()
 const int MQ135 = 34;
-const int buzzer = 5;
+const int buzzer = 27;
 
 //Variáveis gloabias abrir e fechar trava
 const int rele = 25;
@@ -60,7 +60,6 @@ void acenderLEDAoDetectarPresenca() {
 void verificarVazamentodeGas() {
   int estadoMQ135 = analogRead(MQ135);
 
-  //Serial.println(estadoMQ135);
 
   if (estadoMQ135 >= 50) {
     alarme_dois_tons();
@@ -84,6 +83,17 @@ void verificarVazamentodeGas() {
   delay(duracaoTom);
 }*/
 
+void alarme_dois_tons() {
+  int freqAlta = 2000;
+  int freqBaixa = 800;
+  int duracaoTom = 250;
+
+  tone(buzzer, freqAlta, duracaoTom);
+  delay(duracaoTom);
+  tone(buzzer, freqBaixa, duracaoTom);
+  delay(duracaoTom);
+}
+
 void abrirPortaAutomatica() {
   motor.write(180);
   delay(3000);
@@ -100,28 +110,7 @@ void trancarPorta() {
   delay(3000);
 }
 
-// void destrancarPorta() {
-//   String senhaDigitada;
 
-//   Serial.println("Por gentileza, digite a senha para destravar a porta");
-//   while (!Serial.available())
-//     ;
-//   senhaDigitada = Serial.readString();
-
-//   if (senhaDigitada == "Senai@134") {
-//     digitalWrite(rele, HIGH);
-//     Serial.println("Porta Destrancada");
-
-//     abrirPortaAutomatica();  //chamando a função que irá abrir a porta
-//     trancarPorta();          //fehca a porta após 3s
-//   } else {
-//     if (motor.read() != 60) {
-//       fecharPortaAutomatica();
-//     }
-
-//     Serial.println("Senha inválida! Na 3 tentativa irá ser bloqueada e também iremos acionar a policia, fica esperto(a).");
-//   }
-// }
 
 void destrancarPorta() {
   digitalWrite(rele, HIGH);
@@ -157,7 +146,7 @@ void setup() {
 void loop() {
   //acenderLEDAoDetectarPresenca();
   //verificarVazamentodeGas();
-  //alarme_dois_tons();
+  alarme_dois_tons();
   //destrancarPorta();
   //trancarPorta();
 }
