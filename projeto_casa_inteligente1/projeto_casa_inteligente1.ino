@@ -1,5 +1,26 @@
   //bibliotecas
   #include <ESP32Servo.h>
+  #include <WiFi.h>
+  #include <PubSubClient.h>
+
+
+    // --- WiFi & MQTT ---
+    const char* ssid = "ProjetoIoT_Esp32";//sua rede wifi
+    const char* password = "Sen@i134";//senha da sua rede wifi
+    const char* mqtt_server = "172.16.39.79";//endereço do broker público
+    const int mqtt_port = 1883;//porta do broker público, geralmente 1883
+
+    //Tópicos
+    const char* topic_led = "smartlife/sala/luzsala";
+    const char* topic_porta = "smartlife/sala/porta";
+    const char* topic_trava = "smartlife/sala/trava";
+    const char* topic_buzzer = "smartlife/sala/buzzer";
+
+    WiFiClient espClient;
+    PubSubClient client(espClient);
+
+
+    
 
   //Variaveis-acenderLEDAoDetectarPresenca
 
@@ -12,8 +33,7 @@
 
 
   //Variaveis-verificarVazamentodeGas()
-  const int MQ135 = 34;
-  const int buzzer = 27;
+  const int buzzer = 4;
 
   //Variáveis gloabias abrir e fechar trava
   const int rele = 25;
@@ -24,64 +44,100 @@
   const int servoMotor = 26;
 
 
-
-  void acenderLEDAoDetectarPresenca() {
-
-    // Envia pulso de 10 microssegundos no TRIG
-    digitalWrite(trigPin, LOW);
-    delayMicroseconds(2);
-    digitalWrite(trigPin, HIGH);
-    delayMicroseconds(10);
-    digitalWrite(trigPin, LOW);
-
-    // Mede o tempo de resposta no ECHO
-    duracao = pulseIn(echoPin, HIGH, 30000);  // Timeout de 30 ms para evitar travamento
-
-    if (duracao == 0) {
-      Serial.println("Sensor sem resposta ou objeto fora do alcance.");
-      digitalWrite(ledVerde, LOW);
-    } else {
-      // Converte duração em distância (cm)
-      distanciaCm = (duracao * 0.0343) / 2;
-
-      if (distanciaCm > 0 && distanciaCm <= distanciaLimite) {
-        digitalWrite(ledVerde, HIGH);
-        Serial.println("Algo está se aproximando, está há: " + String(distanciaCm) + "cm");
-      } else {
-        digitalWrite(ledVerde, LOW);
-        Serial.println("Nenhum objeto no campo de " + String(distanciaLimite) + "cm");
-      }
-    }
-
+// --- Funções WiFi e MQTT ---
+void conectarWiFi() {//verifica conexão wifi para somente depois iniciar o sistema
+  Serial.println("Conectando ao WiFi...");
+  WiFi.begin(ssid, password);
+  while (WiFi.status() != WL_CONNECTED) {
     delay(500);
+    Serial.print(".");
   }
+  Serial.println("\nWiFi conectado!");
+}
 
-
-  void verificarVazamentodeGas() {
-    int estadoMQ135 = analogRead(MQ135);
-
-
-    if (estadoMQ135 >= 50) {
-      alarme_dois_tons();
+void reconectarMQTT() {//verifica e reconecta a conexão com o broker mqtt
+  while (!client.connected()) {
+    Serial.print("Reconectando MQTT...");
+    if (client.connect("ESP32ClientTest")) {
+      Serial.println("Conectado!");
+      client.subscribe(topic_led);//conecta ao topico do led assim que estabelecer ligação com o broker
+      client.subscribe(topic_porta);//conecta ao topico da porta assim que estabelecer ligação com o broker
     } else {
-      noTone(buzzer);
+      Serial.print("Falha: ");
+      Serial.println(client.state());
+      delay(5000);
+    }
+  }
+}
+
+void tratarMensagem(char* topic, byte* payload, unsigned int length) {//
+  String mensagem = "";
+  for (int i = 0; i < length; i++) {//concatena todas os char* para se ter o texto completo em String
+    mensagem += (char)payload[i];
+  }
+
+  Serial.printf("Mensagem recebida [%s]: %s\n", topic, mensagem.c_str());
+  
+  //led - luz da sala
+  if (strcmp(topic, topic_led) == 0) {//tópico atual é o do led?
+    if (mensagem == "ligar") {
+      digitalWrite(luzSala, HIGH);
+    } else if (mensagem == "desligar") {
+      digitalWrite(luzSala, LOW);
+    }
+  }
+  
+  /*
+    Verifica se o tópico recebido é o topico da porta
+  é uma função da linguagem C que compara duas strings (topic e topic_porta)
+  */
+  //porta
+  if (strcmp(topic, topic_porta) == 0) {//tópico atual é o da porta?
+    if (mensagem == "abrir") {
+      destrancarPorta();
+      delay(500);
+      abrirPortaAutomatico();
+    } else if (mensagem == "fechar") {
+      fecharPortaAutomatico();
+      delay(500);
+      trancarPorta();
+    }
+  }
+}
+
+
+
+ void acenderLEDAoDetectarPresenca() {
+  // Envia pulso de 10 microssegundos no TRIG
+  digitalWrite(trigPin, LOW);
+  delayMicroseconds(2);
+  digitalWrite(trigPin, HIGH);
+  delayMicroseconds(10);
+  digitalWrite(trigPin, LOW);
+
+  // Mede o tempo de resposta no ECHO (timeout de 30ms)
+  duracao = pulseIn(echoPin, HIGH, 30000);
+
+  if (duracao == 0) {
+    Serial.println("Sensor sem resposta ou objeto fora do alcance.");
+    digitalWrite(ledVerde, LOW);
+  } else {
+    // Converte duração em distância (cm)
+    distanciaCm = (duracao * 0.0343) / 2;
+
+    // Verifica se há objeto dentro do limite
+    if (distanciaCm >= 2 && distanciaCm <= distanciaLimite) {
+      digitalWrite(ledVerde, HIGH);
+      Serial.println("Algo está se aproximando, está há: " + String(distanciaCm) + "cm");
+    } else {
+      digitalWrite(ledVerde, LOW);
+      Serial.println("Nenhum objeto no campo de " + String(distanciaLimite) + "cm");
     }
   }
 
-  /*void alarme_dois_tons() {
-    int freqAlta = 2000;
-    int freqBaixa = 800;
-    int duracaoTom = 250;
+  delay(500);
+}
 
-    if(motor.read() != 60){
-
-    tone(buzzer, freqAlta, duracaoTom);
-    delay(duracaoTom);
-    }
-    if else (motor.read() == 60)
-    tone(buzzer, freqBaixa, duracaoTom);
-    delay(duracaoTom);
-  }*/
 
   void alarme_dois_tons() {
     int freqAlta = 2000;
@@ -136,17 +192,18 @@
     //
     motor.write(60);
 
-    digitalWrite(trigPin, LOW);
+    //digitalWrite(trigPin, LOW);
 
-    Serial.println("Sensonres sendo calibrados! Aguente firme :P");
-    delay(1000);
-    Serial.println("Sensores calibrados! Obrigado por esperar.");
+    conectarWiFi();//conecta no wifi
+    client.setServer(mqtt_server, mqtt_port);//conecta no broker server
+    client.setCallback(tratarMensagem);//trata as mensagens recebidas do broker
+
+    Serial.println("Sistema iniciado!");
   }
 
   void loop() {
     //acenderLEDAoDetectarPresenca();
-    //verificarVazamentodeGas();
-    alarme_dois_tons();
+    //alarme_dois_tons();
     //destrancarPorta();
     //trancarPorta();
   }
